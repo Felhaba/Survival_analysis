@@ -1,0 +1,97 @@
+install.packages("readxl")
+install.packages("flexsurv")
+install.packages("survival")
+install.packages("survminer")
+install.packages("SurvRegCensCov")
+install.packages("reshape2") 
+library(readxl) #to work with Excel files
+library(survival) #to fit survival model; it is already built in R'
+# for weibull plot
+library(flexsurv) # to plot Weibull chart using flexsurvreg()
+library(reshape2) # for weibull plot
+        ###
+library(survminer) # to use ggsurvplot_df() ????
+library(SurvRegCensCov) # for WeibullDiag() 
+
+
+draft_tv <- read_excel("draft_analysis.xlsx")
+names(draft_tv)
+attach(draft_tv)
+draft_tv
+View(draft_tv)
+sapply(draft_tv, class)
+      # Kaplan - Meier #
+km.model <- survfit(Surv(time1, time2, status)~1, type="kaplan-meier") # the graph  with dependent variables included looks quite weird... what's the problem
+plot(km.model, conf.int = F, xlab ="Time (years)", ylab = "%Alive = S(t)", 
+     col = c("red", "blue", "green"), main="KM-Model", las=1, mark.time = TRUE) # how to plot charts depending on Rating?
+summary(km.model)
+legend(18, 0.95, legend=c("Rating_0", "Rating_1", "Rating_2"), lty=1, col=c("red", "blue", "green"), bty="n", cex = 0.6)
+
+# statistical significance test
+# Ho: survival is the same for two
+# Ha: survival differs
+survdiff(Surv(time1, time2, status)~rating+salary, data = draft_tv) # Error: Right censored data only What other way to compare or adjust?
+
+
+# Cox proportional hazard model
+cox.mod <- coxph(Surv(time1, time2, status)~rating+salary)
+summary(cox.mod)
+cox.mod2 <- coxph(Surv(time1, time2, status)~rating)
+summary(cox.mod2)
+# now let's check whether salary improves the model or not => LRT test
+anova(cox.mod2, cox.mod, test = "LRT")
+# p-value is quite huge (0.588), hence, salary seems to be 
+# NOT statistically significant
+
+#Checking some of the assumptions of Cox model
+# 1 Linearity (using MARTINGALE) for numerical X's
+plot(predict(cox.mod), residuals(cox.mod, type="martingale"), 
+     xlab="fitted values", ylab="martingale residuals", main="residual plot", las=1)
+abline(h=0)
+# also add a smoother thru the points
+lines(smooth.spline(predict(cox.mod), residuals(cox.mod, type="martingale")), col="red")
+
+# plot for "deviance" residuals
+plot(predict(cox.mod), residuals(cox.mod, type="deviance"), 
+     xlab="fitted values", ylab="deviance residuals", main="residual plot", las=1)
+abline(h=0)
+# also add a smoother thru the points
+lines(smooth.spline(predict(cox.mod), residuals(cox.mod, type="deviance")), col="red")
+
+# 2 proportional hazard assumption (using Schoenfeld test)
+# Ho: HAZARDS are proportional and H1: are NOT proportional
+# this tests provides results for each X as well as for the total model
+cox.zph(cox.mod)
+# Fortunately, the Ho could not be rejected given this amount of data
+
+par(mfrow=c(2, 1)) #to draw two charts (rating and salary)
+plot(cox.zph(cox.mod))
+
+          #Weibull model#
+Srv <- Surv(time1, time2, status, type="interval")
+weib_model <- survreg(Srv ~ rating+salary, data = draft_tv, dist="weibull")
+summary(weib_model)
+
+# Adequacy of Weibull model
+WeibullDiag(Srv ~ rating, data = draft_tv) #how to add description of rating variable? (chart shows, whether in parallel or not)
+    ### Plotting Weibull ###
+# Step 1
+newdat <- expand.grid(
+  rating = draft_tv$rating,  
+  salary = quantile(draft_tv$salary, probs = c(0.25, 0.5, 0.75)))
+newdat
+# Step 2
+surv <- seq(.99, .01, by = -.01)
+t <- predict(weib_model, type = "quantile", p = 1 - surv, newdata = newdat) 
+dim(t)
+t[, 1:7]
+# Step 3
+surv_wbmod_wide <- cbind(newdat, t)
+surv_wbmod <- melt(surv_wbmod_wide, id.vars = c("rating", "salary"),    
+                   variable.name = "surv_id",  value.name = "time")
+surv_wbmod$surv <- surv[as.numeric(surv_wbmod$surv_id)]
+surv_wbmod[, c("upper", "lower", "std.err", "strata")] <- NA
+str(surv_wbmod)
+# Step 4
+ggsurvplot_df(surv_wbmod, surv.geom = geom_line,  
+              color = "rating", legend.title = NULL)
