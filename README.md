@@ -1,4 +1,4 @@
-### Survival_analysis
+### Survival analysis
 The code in R and the data itself are downloaded from EIKON. Filtering was done so to choose high-yield russian corporate bonds.  
 The following links are great helpers to create code: 
 * [Survival Analysis in R intro](https://www.emilyzabor.com/tutorials/survival_analysis_in_r_tutorial.html#Part_1:_Introduction_to_Survival_Analysis)  
